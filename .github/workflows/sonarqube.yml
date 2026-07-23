@@ -2,9 +2,10 @@ name: SonarQube Analysis
 
 on:
   push:
-    branches: [ main ]        # was 'master' — GitHub default branch is 'main'
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   sonarqube:
@@ -15,18 +16,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0       # SonarQube needs full history for accurate blame/new-code
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22     # was 18 (EOL); 22 is current Active LTS
+          node-version: 22
+          cache: npm
 
       - name: Install dependencies
         run: npm install
 
+      - name: Test SonarQube connection
+        shell: powershell
+        run: |
+          Invoke-RestMethod "${{ secrets.SONAR_HOST_URL }}/api/system/status"
+
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v8   # was @master — pin to a release
+        uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
