@@ -1,37 +1,74 @@
-name: ESLint Code Analysis
+name: ESLint Analysis
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
 
 jobs:
   eslint:
+    name: Run ESLint and upload SARIF
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      # Download the repository.
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
-      - name: Cache Node.js modules
-        uses: actions/cache@v4
+      # Install Node.js for the React project.
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
         with:
-          path: node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: ${{ runner.os }}-node-modules
+          node-version: "24"
+          cache: npm
 
-      - name: Install Node.js dependencies
-        run: npm install
+      # Install the exact packages from package-lock.json.
+      - name: Install dependencies
+        run: npm ci
 
+      # Create the output directory before running ESLint.
       - name: Create reports directory
         run: mkdir -p reports
 
-      - name: Install ESLint SARIF Formatter
-        run: npm install @microsoft/eslint-formatter-sarif --save-dev
+      # Run ESLint and write its output in SARIF format.
+      #
+      # ESLint can return exit code 1 when it finds lint problems.
+      # "|| true" allows the report to be uploaded afterward.
+      - name: Generate ESLint SARIF report
+        run: |
+          npx eslint . \
+            --format @microsoft/eslint-formatter-sarif \
+            --output-file reports/eslint-results.sarif || true
 
-      - name: Run ESLint with SARIF output
-        run: npx eslint . --format @microsoft/eslint-formatter-sarif --output-file reports/eslint-results.sarif || true
+      # Show whether the report was created.
+      - name: Verify SARIF report
+        run: |
+          echo "Current directory:"
+          pwd
 
-      - name: Debug ESLint Output
-        run: cat reports/eslint-results.sarif || echo "No SARIF report generated"
+          echo "Reports directory:"
+          ls -la reports
 
+          if [ ! -f reports/eslint-results.sarif ]; then
+            echo "SARIF report was not generated."
+            exit 1
+          fi
+
+          echo "SARIF report generated successfully."
+          ls -lh reports/eslint-results.sarif
+
+      # Upload the SARIF results to GitHub code scanning.
       - name: Upload SARIF report
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: reports/eslint-results.sarif
+          category: eslint
